@@ -62,3 +62,4 @@ flowchart LR
 4. Make sure Ollama is running in the background (`ollama serve`, or the desktop app).
 5. Start the app: `python -m streamlit run app.py`
 6. Open the Teacher Portal, paste notes, generate the summary, then switch to the Student Portal and ask a question.
+7. 
