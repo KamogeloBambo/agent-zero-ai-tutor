@@ -7,7 +7,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 # --- SETTINGS ---
 BASE_URL = "http://localhost:11434/v1"  # Ollama. For a vLLM server use "http://localhost:8000/v1"
-MODEL_NAME = "llama3"
+MODEL_NAME = "llama3.2"
 API_KEY = "ollama"
 MAX_TRIES = 3  # how many times Agent 2 may retry after Agent 3 rejects a reply
 
