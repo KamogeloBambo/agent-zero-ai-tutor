@@ -271,7 +271,6 @@ def run_tutor(question, add_user=True):
                 draft = out(tutor.run_sync(prompt))
 
                 st.write("🕵️ Agent 3 (Fact Checker) is verifying the reply against the notes...")
-                # THIS IS THE FIXED LINE: We now pass the student question to the checker
                 verdict = out(checker.run_sync(f"Teacher notes:\n{notes}\n\nStudent question:\n{question}\n\nTutor reply:\n{draft}"))
                 passed, reason = parse_check(verdict)
                 st.write(f"🧾 Checker said: {verdict.strip()[:200]}")
@@ -365,6 +364,23 @@ with tab_teacher:
     with left:
         with card("card_notes"):
             md("""<div class="a0-h3">1. Upload Lesson Notes</div><div class="a0-desc">Paste your class notes below. The original notes remain the source for every student reply.</div>""")
+            
+            # --- VOICE NOTE FEATURE ---
+            audio_value = st.audio_input("🎤 Or record a voice note of your lesson notes:")
+            if audio_value:
+                import speech_recognition as sr
+                import io
+                r = sr.Recognizer()
+                try:
+                    with sr.AudioFile(io.BytesIO(audio_value.read())) as source:
+                        audio_data = r.record(source)
+                        text = r.recognize_google(audio_data)
+                        st.success(f"**Transcribed:** {text}")
+                        st.session_state["notes_input"] = text
+                except Exception as e:
+                    st.error("Could not transcribe audio. Please type your notes instead.")
+            # --------------------------
+
             notes_input = st.text_area(
                 "Paste messy class notes here:", height=220,
                 placeholder="e.g., Photosynthesis is the process...", key="notes_input",
@@ -394,7 +410,6 @@ with tab_teacher:
                     error = e
                     status.update(label="Could not generate a summary", state="error", expanded=False)
             if error is None:
-                # Keep the RAW notes for the Tutor and Fact Checker, and the summary for students.
                 st.session_state["notes"] = text
                 st.session_state["summary"] = summary
                 st.session_state["messages"] = []
