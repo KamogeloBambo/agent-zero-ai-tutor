@@ -1,40 +1,9 @@
 import os
 import html as _html
 import streamlit as st
-from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
-
-# --- SETTINGS ---
-BASE_URL = "http://localhost:11434/v1"  # Ollama. For a vLLM server use "http://localhost:8000/v1"
-MODEL_NAME = "llama3.2"
-API_KEY = "ollama"
-MAX_TRIES = 3  # how many times Agent 2 may retry after Agent 3 rejects a reply
-
-FALLBACK = (
-    "I couldn't verify a reply against your teacher's notes, so I won't guess. "
-    "Please ask your teacher about this one."
-)
-
-SUMMARIZER_PROMPT = (
-    "You are a teacher's assistant. Summarize these class notes in 3 clear bullet points "
-    "for a student who missed class. Only use facts that appear in the notes."
-)
-TUTOR_PROMPT = (
-    "You are a Socratic tutor. Do NOT give the direct answer. Guide the student toward it by "
-    "asking one or two helpful questions, using ONLY facts from the teacher's notes. "
-    "If the notes do not cover the question, say so and tell the student to ask their teacher."
-)
-CHECKER_PROMPT = (
-    "You are a strict fact checker. You get the teacher's notes and a tutor's reply. "
-    "If the reply states or implies any fact that is not supported by the notes, answer FAIL. "
-    "Otherwise answer PASS. Your first line must be exactly one word: PASS or FAIL. "
-    "On the second line, give one short sentence explaining why."
-)
+from core import BASE_URL, MODEL_NAME, MAX_TRIES, FALLBACK, out, parse_check, build_agents
 
 # --- ONE-TIME LIGHT THEME SETUP ---
-# Writes .streamlit/config.toml in the folder you run Streamlit from, so every widget
-# uses the same light palette as the custom styling below.
 THEME = """[theme]
 base = "light"
 primaryColor = "#176d68"
@@ -233,27 +202,11 @@ def card(key):
         return st.container(border=True)
 
 
-def out(result):
-    """Works with both newer (.output) and older (.data) PydanticAI versions."""
-    return result.output if hasattr(result, "output") else result.data
-
-
-def parse_check(text):
-    """Read Agent 3's verdict from the first line. Returns (passed, reason)."""
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-    first = lines[0].upper().lstrip("*#> ") if lines else ""
-    return first.startswith("PASS"), text.strip()
-
-
-def build_agents():
-    base = st.session_state.get("base_url", BASE_URL)
-    name = st.session_state.get("model_name", MODEL_NAME)
-    provider = OpenAIProvider(base_url=base, api_key=API_KEY)
-    model = OpenAIChatModel(name, provider=provider)
-    return (
-        Agent(model=model, system_prompt=SUMMARIZER_PROMPT),
-        Agent(model=model, system_prompt=TUTOR_PROMPT),
-        Agent(model=model, system_prompt=CHECKER_PROMPT),
+def get_agents():
+    """Build the agents using the connection settings currently chosen in the UI."""
+    return build_agents(
+        st.session_state.get("base_url", BASE_URL),
+        st.session_state.get("model_name", MODEL_NAME),
     )
 
 
@@ -305,7 +258,7 @@ def run_tutor(question, add_user=True):
 
     with st.status("Multi-agent workflow running...", expanded=True) as status:
         try:
-            _, tutor, checker = build_agents()
+            _, tutor, checker = get_agents()
             for attempt in range(1, MAX_TRIES + 1):
                 attempts_used = attempt
                 st.write(f"🧠 Agent 2 (Tutor) is writing a Socratic reply (attempt {attempt} of {MAX_TRIES})...")
@@ -318,8 +271,11 @@ def run_tutor(question, add_user=True):
                 draft = out(tutor.run_sync(prompt))
 
                 st.write("🕵️ Agent 3 (Fact Checker) is verifying the reply against the notes...")
-                verdict = out(checker.run_sync(f"Teacher notes:\n{notes}\n\nTutor reply:\n{draft}"))
+                # THIS IS THE FIXED LINE: We now pass the student question to the checker
+                verdict = out(checker.run_sync(f"Teacher notes:\n{notes}\n\nStudent question:\n{question}\n\nTutor reply:\n{draft}"))
                 passed, reason = parse_check(verdict)
+                st.write(f"🧾 Checker said: {verdict.strip()[:200]}")
+                
                 if passed:
                     reply, verified = draft, True
                     st.write("✅ Check passed.")
@@ -430,7 +386,7 @@ with tab_teacher:
             with st.status("Agent 1 is processing your notes...", expanded=True) as status:
                 st.write("📥 Reading teacher notes...")
                 try:
-                    summarizer, _, _ = build_agents()
+                    summarizer, _, _ = get_agents()
                     summary = out(summarizer.run_sync(text))
                     st.write("✅ Summary generated.")
                     status.update(label="Summary complete", state="complete", expanded=False)
